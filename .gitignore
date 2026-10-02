@@ -1,0 +1,26 @@
+# Generated deployment artifacts
+/models/gemma-3-4b-it-q4_0.gguf
+
+# Local MLflow tracking
+/mlruns/
+/mlartifacts/
+/mlflow.db
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# A raw doodle version of exploration.ipynb
+/notebooks/exploration_v0.9.ipynb

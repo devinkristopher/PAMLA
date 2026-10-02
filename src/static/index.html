@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PAMLA · Soil moisture forecast</title>
+<style>
+:root{font-family:system-ui,sans-serif;color:#203c31;background:#f3f6f1}*{box-sizing:border-box}body{margin:0}main{max-width:780px;margin:50px auto;padding:24px}h1{font-size:40px;margin:0}p{line-height:1.6}.intro{color:#526458}form,.result{background:white;padding:24px;border:1px solid #d7e1d6;border-radius:16px;margin-top:24px}label{display:block;font-weight:600;margin-bottom:12px}textarea{width:100%;min-height:110px;padding:14px;font:inherit;border:1px solid #9bae9d;border-radius:8px;resize:vertical}button{background:#245b42;color:white;border:0;border-radius:8px;font:inherit;padding:12px 20px;margin-top:12px;cursor:pointer}button:disabled{opacity:.6;cursor:wait}button:focus-visible,textarea:focus-visible{outline:3px solid #92b958;outline-offset:3px}.hint{font-size:14px;color:#526458}.error{color:#9e2929}#answer{white-space:pre-wrap}dl{display:grid;grid-template-columns:1fr 1fr;gap:12px;border-top:1px solid #d7e1d6;padding-top:18px}dt{color:#526458}dd{margin:0;text-align:right;overflow-wrap:anywhere}footer{margin-top:24px;font-size:14px}a{color:#245b42}[hidden]{display:none}
+</style>
+</head>
+<body><main>
+<h1>PAMLA v1.0</h1>
+<p class="hint">Predictive Agriculture Machine Learning Assistant</p>
+<p class="intro">Ask for a 24-hour soil moisture reading forecast. PAMLA uses your saved sensor history and a trained XGBoost model, then explains the result.</p>
+<form id="ask-form">
+<label for="question">Your question</label>
+<textarea id="question" maxlength="1000" required>Predict ginger soil moisture 24 hours after the latest reading.</textarea>
+<p class="hint">Each question is independent -- context window is 4,096 tokens. Forecasts start from the timestamp of the latest observation in the dataset -- not necessarily today, unless the data pipeline provides such immediacy. Watering recommendations and other forecast horizons are not supported.</p>
+<button id="submit" type="submit">Ask PAMLA</button>
+<p id="progress" role="status" aria-live="polite"></p>
+</form>
+<section id="result" class="result" aria-labelledby="result-title" hidden>
+<h2 id="result-title">Forecast</h2><p id="answer"></p>
+<div id="numbers" hidden><h3>Model results</h3><dl id="facts"></dl><p id="note" class="hint"></p></div>
+</section>
+<section id="scenario" class="result" hidden>
+  <div class="scenario-header">
+    <h2>Current scenario</h2>
+    <button type="button" id="reset-scenario">Reset scenario</button>
+  </div>
+
+  <p class="hint">
+    Latest observations currently being used by PAMLA.
+  </p>
+
+  <div class="table-wrapper">
+    <table id="scenario-table">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+<footer>Runs locally with XGBoost and Gemma. <a href="/docs">API documentation</a></footer>
+</main>
+<script>
+const form = document.querySelector('#ask-form');
+const button = document.querySelector('#submit');
+const progress = document.querySelector('#progress');
+const result = document.querySelector('#result');
+const numbers = document.querySelector('#numbers');
+function fact(label, value) {
+  const term = document.createElement('dt');
+  const detail = document.createElement('dd');
+  term.textContent = label;
+  detail.textContent = String(value);
+  document.querySelector('#facts').append(term, detail);
+}
+form.addEventListener('submit', async event => {
+  event.preventDefault();
+  const question = document.querySelector('#question').value.trim();
+  if (!question) { progress.textContent = 'Please enter a question.'; return; }
+  button.disabled = true;
+  result.hidden = true;
+  numbers.hidden = true;
+  progress.className = '';
+  progress.textContent = 'Reading your question and preparing the forecast…';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 270000);
+  try {
+    const response = await fetch('/ask', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({question}), signal: controller.signal
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      const detail = typeof data.detail === 'string' ? data.detail : 'Request validation failed. Please check your question.';
+      throw new Error(detail);
+    }
+    document.querySelector('#result-title').textContent = data.status === 'ok' ? 'Your forecast' : data.status === 'needs_clarification' ? 'Please clarify' : 'What PAMLA supports';
+    document.querySelector('#answer').textContent = data.answer;
+    if (data.forecast) {
+      const f = data.forecast;
+      document.querySelector('#facts').replaceChildren();
+      fact('Dataset timestamp (UTC)', f.data_as_of);
+      fact('Forecast timestamp (UTC)', f.forecast_for);
+      fact('Soil moisture at dataset timestamp', f.current_soil_moisture.toFixed(2));
+      fact('Predicted change', (f.predicted_change >= 0 ? '+' : '') + f.predicted_change.toFixed(2));
+      fact('Predicted soil moisture', f.predicted_soil_moisture.toFixed(2));
+      fact('Persistence baseline', f.persistence_baseline.toFixed(2));
+      document.querySelector('#note').textContent = f.note + (data.explanation_source === 'template' ? ' Gemma’s explanation was unavailable; a numerical summary is shown.' : ' The explanation is AI-generated; the values above are the model output.');
+      numbers.hidden = false;
+    }
+    result.hidden = false;
+    progress.textContent = 'Response ready.';
+    await loadScenario();
+  } catch (error) {
+    progress.className = 'error';
+    progress.textContent = error.name === 'AbortError' ? 'The request timed out. Check the launcher terminal before retrying.' : error instanceof TypeError ? 'Could not reach PAMLA. Check that the launcher is running.' : error.message;
+  } finally {
+    clearTimeout(timer);
+    button.disabled = false;
+  }
+});
+</script>
+<script>
+async function uploadCsv(endpoint) {
+    const fileInput = document.getElementById(`${endpoint}-file`);
+    const file = fileInput.files[0];
+
+    if (!file) {
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(`/${endpoint}`, {
+        method: "POST",
+        body: formData
+    });
+
+    const data = await response.json();
+
+    document.getElementById(`${endpoint}-result`).textContent =
+        JSON.stringify(data, null, 2);
+}
+</script>
+<script>
+document
+  .getElementById("reset-scenario")
+  .addEventListener("click", async () => {
+      const response = await fetch("/scenario/reset", {
+          method: "POST"
+      });
+
+      if (!response.ok) {
+          throw new Error("Could not reset scenario.");
+      }
+
+      await loadScenario();
+  });
+</script>
+<script>
+  async function loadScenario() {
+    const response = await fetch("/scenario");
+
+    if (!response.ok) {
+        throw new Error("Could not load scenario.");
+    }
+
+    const data = await response.json();
+
+    const table = document.getElementById("scenario-table");
+    const head = table.querySelector("thead");
+    const body = table.querySelector("tbody");
+
+    head.replaceChildren();
+    body.replaceChildren();
+
+    if (!data.rows.length) {
+        return;
+    }
+
+    const columns = Object.keys(data.rows[0]);
+
+    const headerRow = document.createElement("tr");
+
+    for (const column of columns) {
+        const th = document.createElement("th");
+        th.textContent = column;
+        headerRow.appendChild(th);
+    }
+
+    head.appendChild(headerRow);
+
+    for (const row of data.rows) {
+        const tr = document.createElement("tr");
+
+        for (const column of columns) {
+            const td = document.createElement("td");
+            td.textContent = row[column] ?? "";
+            tr.appendChild(td);
+        }
+
+        body.appendChild(tr);
+    }
+
+    document.getElementById("scenario").hidden = false;
+}
+</script>
+</body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Your Page Title</title>
+  
+  <style>
+    .scenario-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .scenario-header h2 {
+      margin: 0;
+    }
+
+    .scenario-header button {
+      margin-top: 0;
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #d7e1d6;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    th:first-child,
+    td:first-child {
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <!-- Your table and header HTML goes here -->
+</body>
+</html>

@@ -1,0 +1,5 @@
+outs:
+- md5: e619903b3d3583d6160e17e0ac1a0874
+  size: 28890549
+  hash: md5
+  path: relative.csv

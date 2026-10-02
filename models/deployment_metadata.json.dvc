@@ -1,0 +1,5 @@
+outs:
+- md5: 67d62fbadad34dfa00d9ea48305d2540
+  size: 838
+  hash: md5
+  path: deployment_metadata.json

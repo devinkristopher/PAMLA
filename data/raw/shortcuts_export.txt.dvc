@@ -1,0 +1,5 @@
+outs:
+- md5: 862b9c01dd759b74cf738c7717cbb9e7
+  size: 4299
+  hash: md5
+  path: shortcuts_export.txt

@@ -1,0 +1,5 @@
+outs:
+- md5: 597f5e0e87392a1d81ff0b3324df9601
+  size: 113670
+  hash: md5
+  path: selected_model.json
