@@ -189,6 +189,151 @@ PAMLA has a 4,096 token context window, which is approx:
 Throughout our user acceptance testing, conversational schema extraction through even the most verbose of interactions did not even remotely approach that limit. Nevertheless, it is our responsibility to convey that Gemma may optimize context during longer exchanges, which may lead to the unexpected disregard or deprioritization of information. If you find yourself approaching the aforementioned context window limit approximations, please be mindful of potential optimization. The web interface also has a static reminder for reference. Context window issues are not expected; query of soil moisture need not lengthy rapport.
 
 ## Data and Feature Engineering
+### Raw `dataset.csv` Dataset Overview
+The dataset used in this project is an export of **Home Assistant** data. Home Assistant data can be exported by going to **Home Assistant Dashboard** > **History tab** (on the left-hand side) > select your **Start and End dates** in the top, right-hand corner, then clicking the **Overflow Menu icon** (three vertical dots) in the top, left-hand corner.
+
+> The Home Assistant entities we've selected will be reviewed in the **Pivoted Dataset Columns** section, which is the next section in this README.
+
+The `dataset.csv` dataset that we have -- tracked with DVC -- is an untouched export of Home Assistant data. Upon export of the selected entities, there will be **three columns in the dataset**:
+- **entity_id**: Home Assistant's assigned ID of the given entity in that row. For example, an `entity_id` could be `sensor.acurite_atlas_a_178_atlas_humidity`, as it is a datapoint of the Atlas humidity sensor.
+- **state**: The state (or value) of the given entity in that row. For example, a row's `state` could be a numeric value, or `unavailable`, as the sensor's value for that `entity_id` may `unavailable` at the time of the sampling observation.
+- **last_changed**: The timestamp of the observation in question. For example, a row's `last_changed` value could be `2026-09-24T12:38:13.717Z`, as that could be the timestamp of the observation. The `last_changed` timestamp is reported in **UTC** and is compliant with the **ISO 8601** standard, as well as the **RFC 3339** standard.
+
+In our example (based on a real export), the export would look as:
+
+| **`entity_id`** | **`state`** | **`last_changed`** |
+| -------- | -------- | -------- |
+| `sensor.acurite_atlas_a_178_atlas_humidity` | `unavailable` | `2026-09-24T12:38:13.717Z` |
+
+As such, you may observe that the dataset requires pivoting before use. 
+
+> In `notebooks/exploration.ipynb`, the dataset we document the process of pivoting the dataset and trimming **400,000 lines with initial 112 features** into just over **1,900 rows and 10-11 features at the end of the notebook.**
+
+### Pivoted Dataset Columns
+After pivoting the dataset, the data sources for each entity selected in the Home Assistant export will have their own column. **As a result, this shows which entities were selected in the Home Assistant export that generated our data.** We exported sensors relating to the following devices:
+
+- **AcuRite Atlas A 178 Weather Station**: Our multi-sensor weather station that we reviewed in the overview. It has features like temperature, wind direction in degrees, light level in lux, humidity in percentage, as well as multiple diagnostic-level features like the hexadecimal raw message value, signal, boost, SNR, noise floor, and so on. **The AcuRite Atlas seemed to have multiple entities that were used during initialization as they only showed brief reporting of `unknown`, `unavailable`, and sentinel/initial value states.** **The virtual representation of this object was much more complicated than the few features that were extracted, but the data cleaning process revealed the valuable features by `entity_id` name directly As a result, future PAMLA ingestion can start with the correct features from the start.**
+- **Ecowitt Fineoffset WH51 Soil Moisture Sensors**: The multiple WH51 soil moisture sensors were exported. Many of these were not relevant to our experiment, and each had multiple diagnostic-level rows as well. Our approach during V1 was to use more "pure" datapoints this time, and save experimental raw values and SNR-based variables for a different time.
+- **Sun and Moon**: Virtual sun and moon objects in Home Assistant. The desire was to augment the hyperlocal data with globally-relevant data from these celestial bodies; however, the data only went back 10 days, so they were dropped. While imputation would be possible based on historical data, it would not be best practice to do so (methodologically speaking or for pipeline refinement). The light level is measured by the weather station; that goes beyond positioning and tells us an obstruction-aware value. Moon phase would be interesting to obtain in future versions.
+- **Relevant automations and Home Assistant Feature Engineering**: Included were virtual humidity sensor and weather station-relevant automations and engineered features, like alternative calculations of dew point.
+- **tfa_303151_16**: This device was somehow accidentally exported, and its origin is not known. Earlier, we documented that `rtl_haos` automatically creates objects for every 433 MHz RF device that `rtl_433` and the SDR antenna decodes. **This is an example of that.** At some point, this device was detected by our data pipeline and ingested, and accidentally made it into the export. It was dropped. This does demonstrate the nature of our data pipeline quite well, and is an interesting artifact to include when discussing the RF > Home Assistant > PAMLA pipeline. Devices can be ingested and their data travel as far as the preprocessing stage of PAMLA without the user even knowing of their existence. This device likely belonged to a local neighbor, resided in a vehicle, or belonged to a business that resides near the residence at which this experiment took place.
+
+
+As described in `exploration.ipynb`, once the dataset is pivoted, we get the following columns:
+```
+{'automation.ginger_low_humidity',
+ 'binary_sensor.acurite_atlas_178_battery_low',
+ 'binary_sensor.atlas_condensation_risk',
+ 'binary_sensor.fineoffset_wh51_0f85e7_battery_low',
+ 'binary_sensor.fineoffset_wh51_0f8613_battery_low',
+ 'binary_sensor.fineoffset_wh51_0f861a_battery_low',
+ 'binary_sensor.fineoffset_wh51_0fa7d7_battery_low',
+ 'binary_sensor.fineoffset_wh51_0fa9d0_battery_low',
+ 'binary_sensor.none_atlas_battery_ok',
+ 'sensor.acurite_atlas_178_channel',
+ 'sensor.acurite_atlas_178_dew_point',
+ 'sensor.acurite_atlas_178_exception',
+ 'sensor.acurite_atlas_178_frequency',
+ 'sensor.acurite_atlas_178_humidity',
+ 'sensor.acurite_atlas_178_light_level',
+ 'sensor.acurite_atlas_178_message_type',
+ 'sensor.acurite_atlas_178_model',
+ 'sensor.acurite_atlas_178_noise_floor',
+ 'sensor.acurite_atlas_178_rain_total',
+ 'sensor.acurite_atlas_178_raw_msg',
+ 'sensor.acurite_atlas_178_sequence_num',
+ 'sensor.acurite_atlas_178_signal_rssi',
+ 'sensor.acurite_atlas_178_signal_snr',
+ 'sensor.acurite_atlas_178_storm_distance',
+ 'sensor.acurite_atlas_178_strike_count',
+ 'sensor.acurite_atlas_178_temperature',
+ 'sensor.acurite_atlas_178_uv_index',
+ 'sensor.acurite_atlas_178_wind_direction',
+ 'sensor.acurite_atlas_178_wind_speed',
+ 'sensor.acurite_atlas_a_178_atlas_humidity',
+ 'sensor.acurite_atlas_a_178_atlas_illuminance_lux',
+ 'sensor.acurite_atlas_a_178_atlas_lightning_distance_km',
+ 'sensor.acurite_atlas_a_178_atlas_lightning_distance_mi',
+ 'sensor.acurite_atlas_a_178_atlas_lightning_strike_count',
+ 'sensor.acurite_atlas_a_178_atlas_noise',
+ 'sensor.acurite_atlas_a_178_atlas_rain_total_in',
+ 'sensor.acurite_atlas_a_178_atlas_rain_total_mm',
+ 'sensor.acurite_atlas_a_178_atlas_rssi',
+ 'sensor.acurite_atlas_a_178_atlas_snr',
+ 'sensor.acurite_atlas_a_178_atlas_temperature_degc',
+ 'sensor.acurite_atlas_a_178_atlas_temperature_degf',
+ 'sensor.acurite_atlas_a_178_atlas_uv_index',
+ 'sensor.acurite_atlas_a_178_atlas_wind_avg_mph',
+ 'sensor.acurite_atlas_a_178_atlas_wind_direction_deg',
+ 'sensor.acurite_atlas_dew_point',
+ 'sensor.acurite_atlas_dew_point_simple_formula',
+ 'sensor.atlas_wind_direction',
+ 'sensor.dashboard_moon_phase',
+ 'sensor.fineoffset_wh51_0f85e7_ad_raw',
+ 'sensor.fineoffset_wh51_0f85e7_battery_voltage',
+ 'sensor.fineoffset_wh51_0f85e7_boost',
+ 'sensor.fineoffset_wh51_0f85e7_frequency',
+ 'sensor.fineoffset_wh51_0f85e7_frequency_2',
+ 'sensor.fineoffset_wh51_0f85e7_integrity_check',
+ 'sensor.fineoffset_wh51_0f85e7_model',
+ 'sensor.fineoffset_wh51_0f85e7_noise_floor',
+ 'sensor.fineoffset_wh51_0f85e7_signal_rssi',
+ 'sensor.fineoffset_wh51_0f85e7_signal_snr',
+ 'sensor.fineoffset_wh51_0f85e7_soil_moisture',
+ 'sensor.fineoffset_wh51_0f8613_ad_raw',
+ 'sensor.fineoffset_wh51_0f8613_battery_voltage',
+ 'sensor.fineoffset_wh51_0f8613_boost',
+ 'sensor.fineoffset_wh51_0f8613_frequency',
+ 'sensor.fineoffset_wh51_0f8613_frequency_2',
+ 'sensor.fineoffset_wh51_0f8613_integrity_check',
+ 'sensor.fineoffset_wh51_0f8613_model',
+ 'sensor.fineoffset_wh51_0f8613_noise_floor',
+ 'sensor.fineoffset_wh51_0f8613_signal_rssi',
+ 'sensor.fineoffset_wh51_0f8613_signal_snr',
+ 'sensor.fineoffset_wh51_0f8613_soil_moisture',
+ 'sensor.fineoffset_wh51_0f861a_ad_raw',
+ 'sensor.fineoffset_wh51_0f861a_battery_voltage',
+ 'sensor.fineoffset_wh51_0f861a_boost',
+ 'sensor.fineoffset_wh51_0f861a_frequency',
+ 'sensor.fineoffset_wh51_0f861a_frequency_2',
+ 'sensor.fineoffset_wh51_0f861a_integrity_check',
+ 'sensor.fineoffset_wh51_0f861a_model',
+ 'sensor.fineoffset_wh51_0f861a_noise_floor',
+ 'sensor.fineoffset_wh51_0f861a_signal_rssi',
+ 'sensor.fineoffset_wh51_0f861a_signal_snr',
+ 'sensor.fineoffset_wh51_0f861a_soil_moisture',
+ 'sensor.fineoffset_wh51_0fa7d7_ad_raw',
+ 'sensor.fineoffset_wh51_0fa7d7_battery_voltage',
+ 'sensor.fineoffset_wh51_0fa7d7_boost',
+ 'sensor.fineoffset_wh51_0fa7d7_frequency',
+ 'sensor.fineoffset_wh51_0fa7d7_frequency_2',
+ 'sensor.fineoffset_wh51_0fa7d7_integrity_check',
+ 'sensor.fineoffset_wh51_0fa7d7_model',
+ 'sensor.fineoffset_wh51_0fa7d7_noise_floor',
+ 'sensor.fineoffset_wh51_0fa7d7_signal_rssi',
+ 'sensor.fineoffset_wh51_0fa7d7_signal_snr',
+ 'sensor.fineoffset_wh51_0fa7d7_soil_moisture',
+ 'sensor.fineoffset_wh51_0fa9d0_ad_raw',
+ 'sensor.fineoffset_wh51_0fa9d0_battery_voltage',
+ 'sensor.fineoffset_wh51_0fa9d0_boost',
+ 'sensor.fineoffset_wh51_0fa9d0_frequency',
+ 'sensor.fineoffset_wh51_0fa9d0_frequency_2',
+ 'sensor.fineoffset_wh51_0fa9d0_integrity_check',
+ 'sensor.fineoffset_wh51_0fa9d0_model',
+ 'sensor.fineoffset_wh51_0fa9d0_noise_floor',
+ 'sensor.fineoffset_wh51_0fa9d0_signal_rssi',
+ 'sensor.fineoffset_wh51_0fa9d0_signal_snr',
+ 'sensor.fineoffset_wh51_0fa9d0_soil_moisture',
+ 'sensor.moon_phase',
+ 'sensor.sun_next_dawn',
+ 'sensor.sun_next_dusk',
+ 'sensor.sun_next_midnight',
+ 'sensor.sun_next_noon',
+ 'sensor.sun_next_rising',
+ 'sensor.sun_next_setting',
+ 'sensor.tfa_303151_16_humidity',
+ 'sun.sun'}
+```
 
 ### Data Cleansing and Exploratory Analysis
 
@@ -1132,5 +1277,3 @@ As you can see, between PAMLA's custom instructions for the LLM engine, the stru
 ### Model Selection
 
 - V2: dynamically select best performing model (instead of selected_model = xgb_delta_model)
-# PAMLA
-# PAMLA
