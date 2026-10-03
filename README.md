@@ -8,6 +8,7 @@ FastAPI provides the ASGI-based web framework that powers PAMLA's API, which pro
 ![PAMLA web interface](assets/image-15.png)
 > *The PAMLA web interface is shown.*
 
+*Developed as part of the **[TripleTen](https://tripleten.com/) Artificial Intelligence and Machine Learning (AI/ML) Engineering Practicum**.*
 ## Table of Contents
 
 - [Overview](#overview)
@@ -210,7 +211,7 @@ As such, you may observe that the dataset requires pivoting before use.
 
 > In `notebooks/exploration.ipynb`, the dataset we document the process of pivoting the dataset and trimming **400,000 lines with initial 112 features** into just over **1,900 rows and 10-11 features at the end of the notebook.**
 
-### Dataset Versioning with DVC
+### Dataset Versioning with DVC and the DagsHub Repository
 
 The raw `dataset.csv` file is versioned using [DVC (Data Version Control)](https://dvc.org/). Rather than storing the raw dataset directly in Git, Git tracks the lightweight DVC metadata associated with the dataset while the dataset contents are stored in remote DVC storage.
 
