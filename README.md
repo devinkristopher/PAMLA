@@ -210,6 +210,14 @@ As such, you may observe that the dataset requires pivoting before use.
 
 > In `notebooks/exploration.ipynb`, the dataset we document the process of pivoting the dataset and trimming **400,000 lines with initial 112 features** into just over **1,900 rows and 10-11 features at the end of the notebook.**
 
+### Dataset Versioning with DVC
+
+The raw `dataset.csv` file is versioned using [DVC (Data Version Control)](https://dvc.org/). Rather than storing the raw dataset directly in Git, Git tracks the lightweight DVC metadata associated with the dataset while the dataset contents are stored in remote DVC storage.
+
+For this project, the configured DVC remote is hosted through [DagsHub](https://www.dagshub.com) using [**the PAMLA DagsHub repository**](https://dagshub.com/devinkristopher/PAMLA). This allows the exact dataset version associated with a Git revision to be retrieved without committing the full raw dataset to the Git repository.
+
+DVC is currently used to version the raw source dataset. Data preprocessing, feature engineering, and model training remain implemented through PAMLA's Python pipeline rather than a `dvc.yaml` pipeline. This distinction is intentional: DVC provides dataset provenance and reproducibility, while MLflow is used separately for model experiment and hyperparameter tracking.
+
 ### Pivoted Dataset Columns
 After pivoting the dataset, the data sources for each entity selected in the Home Assistant export will have their own column. **As a result, this shows which entities were selected in the Home Assistant export that generated our data.** We exported sensors relating to the following devices:
 
@@ -452,7 +460,9 @@ Which returns me to the previous point of this section: **data validation can be
 
 ### MLFlow Dashboard
 
-This experiment uses **MLFlow** to identify the model with the best performance. Performance metrics, hyperparameter, and parameter configurations are logged.
+This experiment uses **MLFlow** to identify the model with the best performance. Performance metrics, hyperparameter, and parameter configurations are logged. 
+
+PAMLA separates data versioning from model experiment tracking. DVC versions the raw dataset used to reproduce a training run, while MLflow records model configurations, hyperparameters, and performance metrics. Together, the Git revision, DVC-tracked dataset revision, and MLflow experiment metadata provide a source of origin across code, data, and model experimentation, respectively.
 
 Programmatic model selection: XGBoost hyperparameter configurations are logged as individual MLflow runs. mlflow.search_runs() queries only the completed runs created by the current tuning session and orders them by cross-validation RMSE. The best run's parameters are then used to train the final held-out XGBoost model.
 
@@ -638,6 +648,28 @@ Type `Python: Select Interpreter`.
 
 Select the environment: *ag_env (Python 3.11.x)*
 
+### Retrieve the Versioned Dataset using DVC
+
+PAMLA uses DVC to version the raw training dataset separately from the Git repository.
+
+After cloning the repository and installing the project dependencies, retrieve the dataset associated with the current Git revision:
+
+```bash
+dvc pull
+```
+
+The repository's default DVC remote is configured as `origin` and hosted through DagsHub. DVC will use the tracked metadata in the repository to restore the corresponding raw dataset into its expected location under `data/raw/`.
+
+You can verify the configured remote with:
+
+```bash
+dvc remote list
+```
+
+Once the dataset has been restored, PAMLA's preprocessing and training code can consume it normally.
+
+> DVC authentication credentials, when required for write access to the remote, should be configured locally and must not be committed to Git.
+
 ### Train the ML Model
 
 1. Run `train.py`.
@@ -769,6 +801,7 @@ protobuf==4.25.9
 python-multipart==0.0.32
 fastapi==0.141.1
 uvicorn==0.53.0
+dvc==3.67.1
 pytest==9.1.1
 httpx2==2.13.1
 ```

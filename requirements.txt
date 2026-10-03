@@ -12,6 +12,7 @@ protobuf==4.25.9
 python-multipart==0.0.32
 fastapi==0.141.1
 uvicorn==0.53.0
+dvc==3.67.1
 pytest==9.1.1
 # This is only required for unit testing.
 # We used FastAPI's TestClient class for FastAPI ASGI server testing without needing a live instance running.
