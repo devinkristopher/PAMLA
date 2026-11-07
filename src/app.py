@@ -443,20 +443,27 @@ def ask(request: AskRequest):
         exclude={"timestamp"},
     )
 
-    # 3. Append a hypothetical row when something changed
-    if changes:
-        new_df = observation_to_df(observation, df)
-        df = extend_dataframe(df, new_df)
+    # Recalculate dew point unless the user explicitly supplied one.
+    if "dew_point" not in changes:
+        latest = df.index[-1]
 
-        # Recalculate dew point unless the user explicitly supplied one
-        if "dew_point" not in changes:
-            latest = df.index[-1]
-
-            df.loc[latest, DEW_POINT_COLUMN] = calculate_dew_point_f(
+        try:
+            dew_point_f = calculate_dew_point_f(
                 df.loc[latest, TEMPERATURE_COLUMN],
                 df.loc[latest, HUMIDITY_COLUMN],
             )
-
+        except ValueError:
+            return {
+                "status": "needs_clarification",
+                "answer": (
+                    "I couldn't calculate dew point from that humidity. "
+                    "Please use a humidity greater than 0% and at most "
+                    "100%. Your saved scenario has not changed."
+                ),
+                "forecast": None,
+            }
+        df.loc[latest, DEW_POINT_COLUMN] = dew_point_f
+        
         # Persist the completed hypothetical observation
         app.state.df = df
 
@@ -560,9 +567,13 @@ def calculate_dew_point_f(temperature_f, humidity):
     a = 17.625
     b = 243.04
 
+    if not 0 < humidity <= 100:
+        raise ValueError("Humidity must be greater than 0 and at most 100%.")
+
+    gamma_humidity = math.log(humidity / 100)
+
     gamma = (
-        math.log(humidity / 100)
-        + (a * temperature_c) / (b + temperature_c)
+        gamma_humidity + (a * temperature_c) / (b + temperature_c)
     )
 
     dew_point_c = (b * gamma) / (a - gamma)
