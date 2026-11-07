@@ -443,33 +443,33 @@ def ask(request: AskRequest):
         exclude={"timestamp"},
     )
 
-    # 3. Append a hypothetical row when something changed
+    # Recalculate dew point unless the user explicitly supplied one.
     if changes:
         new_df = observation_to_df(observation, df)
         df = extend_dataframe(df, new_df)
-        
-    # Recalculate dew point unless the user explicitly supplied one.
-    if "dew_point" not in changes:
-        latest = df.index[-1]
 
-        try:
-            dew_point_f = calculate_dew_point_f(
-                df.loc[latest, TEMPERATURE_COLUMN],
-                df.loc[latest, HUMIDITY_COLUMN],
-            )
-        except ValueError:
-            return {
-                "status": "needs_clarification",
-                "answer": (
-                    "I couldn't calculate dew point from that humidity. "
-                    "Please use a humidity greater than 0% and at most "
-                    "100%. Your saved scenario has not changed."
-                ),
-                "forecast": None,
-            }
-        df.loc[latest, DEW_POINT_COLUMN] = dew_point_f
-        
-        # Persist the completed hypothetical observation
+        # Recalculate dew point unless the user explicitly supplied one
+        if "dew_point" not in changes:
+            latest = df.index[-1]
+
+            try:
+                dew_point_f = calculate_dew_point_f(
+                    df.loc[latest, TEMPERATURE_COLUMN],
+                    df.loc[latest, HUMIDITY_COLUMN],
+                )
+            except ValueError:
+                return {
+                    "status": "needs_clarification",
+                    "answer": (
+                        "Please use a humidity greater than 0% and "
+                        "at most 100%. Your saved scenario has not changed."
+                    ),
+                    "forecast": None,
+                }
+
+            df.loc[latest, DEW_POINT_COLUMN] = dew_point_f
+
+        # Save changes even when dew point was explicitly supplied.
         app.state.df = df
 
     # 4. Perform normal feature engineering
