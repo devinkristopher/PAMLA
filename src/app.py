@@ -443,6 +443,11 @@ def ask(request: AskRequest):
         exclude={"timestamp"},
     )
 
+    # 3. Append a hypothetical row when something changed
+    if changes:
+        new_df = observation_to_df(observation, df)
+        df = extend_dataframe(df, new_df)
+        
     # Recalculate dew point unless the user explicitly supplied one.
     if "dew_point" not in changes:
         latest = df.index[-1]
