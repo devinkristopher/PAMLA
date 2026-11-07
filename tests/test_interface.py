@@ -43,6 +43,30 @@ def test_dew_point_from_temp_humidity():
     assert np.isfinite(dew_point)
     assert dew_point < 80
 
+def test_dew_point_rejects_RH_of_0_or_greater_than_100():
+    with pytest.raises(ValueError):
+        calculate_dew_point_f(
+            temperature_f=80,
+            humidity=0,
+        )
+
+    with pytest.raises(ValueError):
+        calculate_dew_point_f(
+            temperature_f=80,
+            humidity=120,
+        )
+
+@pytest.mark.parametrize("humidity", [-1, 0, 120])
+def test_dew_point_rejects_invalid_humidity(humidity):
+    with pytest.raises(ValueError, match="Humidity must"):
+        calculate_dew_point_f(
+            temperature_f=80,
+            humidity=humidity,
+        )
+
+def test_dew_point_equals_temperature_at_100_percent_humidity():
+    assert calculate_dew_point_f(80, 100) == pytest.approx(80)
+
 def test_observation_to_df_converts_rainfall_to_cumulative_total():
     original_df = pd.DataFrame(
         {
@@ -100,3 +124,33 @@ def test_gemma_parses_fahrenheit_with_space():
         # IF that's the case, we actualyl don't need to run our rest button state cleanup function at the beginning and possibly end.
         # But we will for best practices, as sometimes things persist in in unintended manner.
         client.post("/scenario/reset")
+
+# Make sure that if the humidity is 0, we return a clarification instead of saving the observation.
+def test_ask_zero_humidity_returns_clarification_without_saving(monkeypatch):
+    def fake_call_gemma(prompt):
+        return (
+            '{"status": "ok", '
+            '"values": {"temperature": 80, "humidity": 0}, '
+            '"clarification": null}'
+        )
+
+    # Replace the external LLM call, keeping the real calculation
+    # and /ask request handling.
+    monkeypatch.setattr("src.app.call_gemma", fake_call_gemma)
+
+    with TestClient(app) as client:
+        before = app.state.df.copy(deep=True)
+
+        response = client.post(
+            "/ask",
+            json={"question": "What if it is 80 F and humidity is 0%?"},
+        )
+
+        assert response.status_code == 200
+
+        body = response.json()
+        assert body["status"] == "needs_clarification"
+        assert body["forecast"] is None
+        assert "humidity" in body["answer"].lower()
+
+        pd.testing.assert_frame_equal(app.state.df, before)
