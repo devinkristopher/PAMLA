@@ -98,7 +98,7 @@ form.addEventListener('submit', async event => {
       fact('Predicted change', (f.predicted_change >= 0 ? '+' : '') + f.predicted_change.toFixed(2));
       fact('Predicted soil moisture', f.predicted_soil_moisture.toFixed(2));
       fact('Persistence baseline', f.persistence_baseline.toFixed(2));
-      document.querySelector('#note').textContent = f.note + (data.explanation_source === 'template' ? ' Gemma’s explanation was unavailable; a numerical summary is shown.' : ' The explanation is AI-generated; the values above are the model output.');
+      document.querySelector('#note').textContent = data.explanation_source === 'template' ? 'Gemma’s explanation was unavailable; a numerical summary is shown.' : 'The explanation is AI-generated; the values above are the model output.';
       numbers.hidden = false;
     }
     result.hidden = false;
