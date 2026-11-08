@@ -3,10 +3,10 @@ FROM python:3.11-slim
 WORKDIR /app
 
 COPY requirements.txt .
-COPY VERSION .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY VERSION .
 COPY src/ src/
 COPY configs/ configs/
 COPY models/ models/
