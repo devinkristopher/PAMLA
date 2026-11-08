@@ -67,6 +67,7 @@ from preprocess import DEW_POINT_COLUMN, HUMIDITY_COLUMN, RAIN_TOTAL_COL, TEMPER
 import preprocess
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+APP_VERSION = (PROJECT_ROOT / "VERSION").read_text(encoding="utf-8").strip()
 CONFIG_YAML_PATH = PROJECT_ROOT / "configs" / "config.yaml"
 MODELS_PATH = PROJECT_ROOT / "models"
 DEPLOYMENT_JSON = MODELS_PATH / "deployment_metadata.json"
@@ -107,7 +108,15 @@ async def lifespan(app):
 
     yield
 
-app = FastAPI(title="PAMLA", lifespan=lifespan)
+app = FastAPI(
+    title="PAMLA",
+    version=APP_VERSION,
+    lifespan=lifespan,
+)
+
+@app.get("/version")
+def get_version():
+    return {"version": APP_VERSION}
 
 def prepare_latest_features(df, metadata):
     """Prepare the latest hour of features for prediction, validating that all required features are present and finite."""
