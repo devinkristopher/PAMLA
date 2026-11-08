@@ -67,6 +67,7 @@ from preprocess import DEW_POINT_COLUMN, HUMIDITY_COLUMN, RAIN_TOTAL_COL, TEMPER
 import preprocess
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+APP_VERSION = (PROJECT_ROOT / "VERSION").read_text(encoding="utf-8").strip()
 CONFIG_YAML_PATH = PROJECT_ROOT / "configs" / "config.yaml"
 MODELS_PATH = PROJECT_ROOT / "models"
 DEPLOYMENT_JSON = MODELS_PATH / "deployment_metadata.json"
@@ -107,7 +108,15 @@ async def lifespan(app):
 
     yield
 
-app = FastAPI(title="PAMLA", lifespan=lifespan)
+app = FastAPI(
+    title="PAMLA",
+    version=APP_VERSION,
+    lifespan=lifespan,
+)
+
+@app.get("/version")
+def get_version():
+    return {"version": APP_VERSION}
 
 def prepare_latest_features(df, metadata):
     """Prepare the latest hour of features for prediction, validating that all required features are present and finite."""
@@ -443,7 +452,7 @@ def ask(request: AskRequest):
         exclude={"timestamp"},
     )
 
-    # 3. Append a hypothetical row when something changed
+    # Recalculate dew point unless the user explicitly supplied one.
     if changes:
         new_df = observation_to_df(observation, df)
         df = extend_dataframe(df, new_df)
@@ -452,12 +461,24 @@ def ask(request: AskRequest):
         if "dew_point" not in changes:
             latest = df.index[-1]
 
-            df.loc[latest, DEW_POINT_COLUMN] = calculate_dew_point_f(
-                df.loc[latest, TEMPERATURE_COLUMN],
-                df.loc[latest, HUMIDITY_COLUMN],
-            )
+            try:
+                dew_point_f = calculate_dew_point_f(
+                    df.loc[latest, TEMPERATURE_COLUMN],
+                    df.loc[latest, HUMIDITY_COLUMN],
+                )
+            except ValueError:
+                return {
+                    "status": "needs_clarification",
+                    "answer": (
+                        "Please use a humidity greater than 0% and "
+                        "at most 100%. Your saved scenario has not changed."
+                    ),
+                    "forecast": None,
+                }
 
-        # Persist the completed hypothetical observation
+            df.loc[latest, DEW_POINT_COLUMN] = dew_point_f
+
+        # Save changes even when dew point was explicitly supplied.
         app.state.df = df
 
     # 4. Perform normal feature engineering
@@ -493,26 +514,6 @@ def ask(request: AskRequest):
         "predicted_soil_moisture": predicted,
         "persistence_baseline": current,
     }
-
-
-    parsed = parse_gemma_json(call_gemma(prompt))
-
-    print("\n=== GEMMA EXTRACTION ===")
-    print(parsed)
-
-    extraction = LLMExtraction(**parsed)
-
-    if extraction.status == "clarify":
-        return {
-            "status": "needs_clarification",
-            "answer": extraction.clarification,
-            "forecast": None,
-        }
-
-    observation = extraction.values
-
-    print("\n=== OBSERVATION ===")
-    print(observation)
 
     fallback = (
     f"Using the dataset as of {forecast['data_as_of']}, PAMLA forecasts soil "
@@ -560,9 +561,13 @@ def calculate_dew_point_f(temperature_f, humidity):
     a = 17.625
     b = 243.04
 
+    if not 0 < humidity <= 100:
+        raise ValueError("Humidity must be greater than 0 and at most 100%.")
+
+    gamma_humidity = math.log(humidity / 100)
+
     gamma = (
-        math.log(humidity / 100)
-        + (a * temperature_c) / (b + temperature_c)
+        gamma_humidity + (a * temperature_c) / (b + temperature_c)
     )
 
     dew_point_c = (b * gamma) / (a - gamma)
