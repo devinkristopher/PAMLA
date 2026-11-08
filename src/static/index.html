@@ -8,7 +8,7 @@
 </style>
 </head>
 <body><main>
-<h1>PAMLA v1.0</h1>
+<h1 id="app-title">PAMLA</h1>
 <p class="hint">Predictive Agriculture Machine Learning Assistant</p>
 <p class="intro">Ask for a 24-hour soil moisture reading forecast. PAMLA uses your saved sensor history and a trained XGBoost model, then explains the result.</p>
 <form id="ask-form">
@@ -47,6 +47,18 @@ const button = document.querySelector('#submit');
 const progress = document.querySelector('#progress');
 const result = document.querySelector('#result');
 const numbers = document.querySelector('#numbers');
+async function loadVersion() {
+  try {
+    const response = await fetch('/version');
+    if (!response.ok) throw new Error('Could not load version');
+
+    const data = await response.json();
+    document.querySelector('#app-title').textContent = `PAMLA v${data.version}`;
+  } catch (error) {
+    console.warn('Version unavailable:', error);
+  }
+}
+loadVersion();
 function fact(label, value) {
   const term = document.createElement('dt');
   const detail = document.createElement('dd');
