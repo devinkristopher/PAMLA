@@ -515,26 +515,6 @@ def ask(request: AskRequest):
         "persistence_baseline": current,
     }
 
-
-    parsed = parse_gemma_json(call_gemma(prompt))
-
-    print("\n=== GEMMA EXTRACTION ===")
-    print(parsed)
-
-    extraction = LLMExtraction(**parsed)
-
-    if extraction.status == "clarify":
-        return {
-            "status": "needs_clarification",
-            "answer": extraction.clarification,
-            "forecast": None,
-        }
-
-    observation = extraction.values
-
-    print("\n=== OBSERVATION ===")
-    print(observation)
-
     fallback = (
     f"Using the dataset as of {forecast['data_as_of']}, PAMLA forecasts soil "
     f"moisture of {forecast['predicted_soil_moisture']:.2f} at "

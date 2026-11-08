@@ -154,3 +154,50 @@ def test_ask_zero_humidity_returns_clarification_without_saving(monkeypatch):
         assert "humidity" in body["answer"].lower()
 
         pd.testing.assert_frame_equal(app.state.df, before)
+
+# make sure that the /ask endpoint calls Gemma twice, once to extract the observation, and once to explain the forecast. no duplicate extraction should occur.
+def test_ask_extracts_once_then_explains_forecast(monkeypatch):
+    calls = []
+
+    def fake_call_gemma(prompt):
+        calls.append(prompt)
+
+        if "Interpret the user's request for PAMLA." in prompt:
+            return (
+                '{"status": "ok", '
+                '"values": {"temperature": 80, "humidity": 40}, '
+                '"clarification": null}'
+            )
+
+        if "Explain this ginger soil-moisture forecast" in prompt:
+            return "This forecast is a model estimate."
+
+        pytest.fail("Unexpected Gemma prompt")
+
+    monkeypatch.setattr("src.app.call_gemma", fake_call_gemma)
+
+    with TestClient(app) as client:
+        before = app.state.df.copy(deep=True)
+
+        try:
+            response = client.post(
+                "/ask",
+                json={
+                    "question": "What if it is 80 F and humidity is 40%?"
+                },
+            )
+
+            assert response.status_code == 200
+
+            body = response.json()
+            assert body["status"] == "ok"
+            assert body["forecast"] is not None
+            assert body["explanation_source"] == "gemma"
+            assert body["answer"] == "This forecast is a model estimate."
+
+            assert len(calls) == 2
+            assert "Interpret the user's request for PAMLA." in calls[0]
+            assert "Explain this ginger soil-moisture forecast" in calls[1]
+
+        finally:
+            app.state.df = before
